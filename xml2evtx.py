@@ -20,7 +20,12 @@ try:
     from lxml import etree
     has_lxml = True
 except ImportError:
+    # fall back to the stdlib ElementTree if lxml is not installed
+    import xml.etree.ElementTree as etree
     has_lxml = False
+
+# XML parse error alias for both lxml and ElementTree
+PARSE_ERROR = getattr(etree, 'XMLSyntaxError', getattr(etree, 'ParseError', Exception))
 
 # Test Event Log
 TEST_EVENTLOG = """<?xml version="1.0" encoding="utf-8" standalone="yes"?>
@@ -261,9 +266,14 @@ def to_wordpack(str_name):
 
 def to_lxml(record_xml):
     fin_xml = record_xml.encode("utf-8")
-    parser = etree.XMLParser(resolve_entities=False)
-    
-    return etree.fromstring(fin_xml, parser)
+    # Use lxml when available (allows disabling entity resolution),
+    # otherwise use the stdlib ElementTree parser.
+    if has_lxml:
+        parser = etree.XMLParser(resolve_entities=False)
+        return etree.fromstring(fin_xml, parser)
+    else:
+        # xml.etree.ElementTree.XMLParser does not support resolve_entities
+        return etree.fromstring(fin_xml)
 
 
 def xml_records(filename):
@@ -279,7 +289,7 @@ def xml_records(filename):
             if xml.strip().startswith("<System>"):
                 try:
                     yield to_lxml("<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\" ?><Event>" + xml), None
-                except etree.XMLSyntaxError as e:
+                except PARSE_ERROR as e:
                     yield xml, e
 
 
@@ -291,7 +301,7 @@ def load_test_data(data):
         if xml.strip().startswith("<System>"):
             try:
                 yield to_lxml("<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\" ?><Event>" + xml), None
-            except etree.XMLSyntaxError as e:
+            except PARSE_ERROR as e:
                 yield xml, e
 
 
